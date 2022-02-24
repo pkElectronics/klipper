@@ -11,8 +11,11 @@ class ZonlyKinematics:
         self.printer = config.get_printer()
         # Setup axis rails
         self.rails = [stepper.LookupMultiRail(config.getsection('stepper_' + n))
-                      for n in 'z']
-        for rail, axis in zip(self.rails, 'z'):
+                      for n in 'z']			
+	self.rails.append(self.rails[0])
+  	self.rails.append(self.rails[0])
+  	 
+	for rail, axis in zip(self.rails, 'z'):
             rail.setup_itersolve('cartesian_stepper_alloc', axis.encode())
         for s in self.get_steppers():
             s.set_trapq(toolhead.get_trapq())
@@ -27,8 +30,8 @@ class ZonlyKinematics:
                                            above=0., maxval=max_accel)
         self.limits =  [(1.0, 1.0),(1.0, 1.0),(1.0, -1.0)]
         ranges = [r.get_range() for r in self.rails]
-        self.axes_min = toolhead.Coord(0, 0, *[r[0] for r in ranges], e=0.)
-        self.axes_max = toolhead.Coord(0, 0, *[r[1] for r in ranges], e=0.)
+        self.axes_min = toolhead.Coord(*[r[0] for r in ranges], e=0.)
+        self.axes_max = toolhead.Coord(*[r[1] for r in ranges], e=0.)
 
 
         # Check for dual carriage support
@@ -50,7 +53,7 @@ class ZonlyKinematics:
         # Determine movement
         position_min, position_max = rail.get_range()
         hi = rail.get_homing_info()
-        homepos = [None, None, None, None]
+        homepos = [0, 0, None, None]
         homepos[axis] = hi.position_endstop
         forcepos = list(homepos)
         if hi.positive_dir:
