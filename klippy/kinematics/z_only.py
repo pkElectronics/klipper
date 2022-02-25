@@ -68,7 +68,7 @@ class ZonlyKinematics:
 	     if axis is not 2:
 		 pass
 	     else:
-                 self._home_axis(homing_state, axis, self.rails[0])
+                 self._home_axis(homing_state, axis, self.rails[2])
 
     def _motor_off(self, print_time):
         self.limits =  [(1.0, 1.0),(1.0, 1.0),(1.0, -1.0)]
