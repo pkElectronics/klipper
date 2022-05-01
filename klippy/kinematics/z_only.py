@@ -12,8 +12,8 @@ class ZonlyKinematics:
         # Setup axis rails
         self.rails = [stepper.LookupMultiRail(config.getsection('stepper_' + n))
                       for n in 'z']			
-	self.rails.append(self.rails[0])
-  	self.rails.append(self.rails[0])
+	#self.rails.append(self.rails[0])
+  	#self.rails.append(self.rails[0])
   	 
 	for rail, axis in zip(self.rails, 'z'):
             rail.setup_itersolve('cartesian_stepper_alloc', axis.encode())
@@ -28,19 +28,19 @@ class ZonlyKinematics:
                                               above=0., maxval=max_velocity)
         self.max_z_accel = config.getfloat('max_z_accel', max_accel,
                                            above=0., maxval=max_accel)
-        self.limits =  [(1.0, 1.0),(1.0, 1.0),(1.0, -1.0)]
+        self.limits = [(1.0, 1.0),(1.0, 1.0),(1.0, -1.0)]
         ranges = [r.get_range() for r in self.rails]
-        self.axes_min = toolhead.Coord(*[r[0] for r in ranges], e=0.)
-        self.axes_max = toolhead.Coord(*[r[1] for r in ranges], e=0.)
+        self.axes_min = toolhead.Coord(0, 0, ranges[0][0], e=0.)
+        self.axes_max = toolhead.Coord(0, 0, ranges[0][1], e=0.)
 
-
-        # Check for dual carriage support
- 
     def get_steppers(self):
         rails = self.rails
         return [s for rail in rails for s in rail.get_steppers()]
+
     def calc_position(self, stepper_positions):
-        return [stepper_positions[rail.get_name()] for rail in self.rails]
+        pos = [stepper_positions[rail.get_name()] for rail in self.rails]
+        return [0, 0, pos[0]]
+
     def set_position(self, newpos, homing_axes):
         for i, rail in enumerate(self.rails):
             rail.set_position(newpos)
@@ -62,16 +62,18 @@ class ZonlyKinematics:
             forcepos[axis] += 1.5 * (position_max - hi.position_endstop)
         # Perform homing
         homing_state.home_rails([rail], forcepos, homepos)
+
     def home(self, homing_state):
         # Each axis is homed independently and in order
         for axis in homing_state.get_axes():
-	     if axis is not 2:
-		 pass
-	     else:
-                 self._home_axis(homing_state, axis, self.rails[2])
+            if axis is not 2:
+                pass
+            else:
+                self._home_axis(homing_state, axis, self.rails[0])
 
     def _motor_off(self, print_time):
-        self.limits =  [(1.0, 1.0),(1.0, 1.0),(1.0, -1.0)]
+        self.limits = [(1.0, 1.0),(1.0, 1.0),(1.0, -1.0)]
+
     def _check_endstops(self, move):
         end_pos = move.end_pos
         for i in (0, 1, 2):
