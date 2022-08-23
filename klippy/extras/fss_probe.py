@@ -55,6 +55,9 @@ class PrinterFssProbe:
         self.gcode.register_command('MOVE_PLATE_FSS', self.cmd_MOVE_PLATE_FSS,
                                     desc=self.cmd_PROBE_help)
 
+        self.gcode.register_command('QUERY_FSS', self.cmd_QUERY_FSS,                
+                                    desc=self.cmd_QUERY_FSS_help)
+
     def _handle_homing_move_begin(self, hmove):
         if self.mcu_probe in hmove.get_mcu_endstops():
             #self.mcu_probe.probe_prepare(hmove)
@@ -149,6 +152,13 @@ class PrinterFssProbe:
         gcmd.respond_info("Result is z=%.6f" % (pos[2],))
         self.last_z_result = pos[2]
 
+    cmd_QUERY_FSS_help = "Return the status of the z-probe"
+    def cmd_QUERY_FSS(self, gcmd):
+        toolhead = self.printer.lookup_object('toolhead')
+        print_time = toolhead.get_last_move_time()
+        res = self.mcu_probe.query_endstop(print_time)
+        self.last_state = res
+        gcmd.respond_info("fss input: %s" % (["open", "TRIGGERED"][not not res],))
 
     def get_status(self, eventtime):
         return {'last_query': self.last_state,
