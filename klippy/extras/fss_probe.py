@@ -110,12 +110,14 @@ class PrinterFssProbe:
             raise self.printer.command_error("Must home before probe")
         phoming = self.printer.lookup_object('homing')
         pos = toolhead.get_position()
+        opos = pos[2]
         pos[2] += amount
         epos = [pos[0],pos[1],pos[2]]
         try:
             epos = phoming.probing_move(self.mcu_probe, pos, speed)
-            self.gcode.respond_info("probe at %.3f,%.3f is z=%.6f"
-                                % (epos[0], epos[1], epos[2]))
+            
+            self.gcode.respond_info("probe at %.3f,%.3f is z=%.4f"
+                                % (epos[0], epos[1], epos[2] - opos))
         except self.printer.command_error as e:
             reason = str(e)
             if "Timeout during endstop homing" in reason:
