@@ -111,7 +111,7 @@ class PrinterFssProbe:
         phoming = self.printer.lookup_object('homing')
         pos = toolhead.get_position()
         pos[2] += amount
-        epos = [-1,-1,-1]
+        epos = [pos[0],pos[1],pos[2]]
         try:
             epos = phoming.probing_move(self.mcu_probe, pos, speed)
             self.gcode.respond_info("probe at %.3f,%.3f is z=%.6f"
@@ -131,7 +131,7 @@ class PrinterFssProbe:
     def run_probe(self, gcmd):
       #  speed = gcmd.get_float("PROBE_SPEED", self.speed, above=0.)
         lift_amount = gcmd.get_float("Z", self.lift_amount, minval=0.)
-        lift_speed = gcmd.get_float("F", self.lift_speed, above=0.)
+        lift_speed = gcmd.get_float("F", self.lift_speed, above=0.) / 60
 
 
         must_notify_multi_probe = not self.multi_probe_pending
