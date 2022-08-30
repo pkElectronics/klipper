@@ -115,15 +115,22 @@ class PrinterFssProbe:
         epos = [pos[0],pos[1],pos[2]]
         try:
             epos = phoming.probing_move(self.mcu_probe, pos, speed)
-            
-            self.gcode.respond_info("probe at %.3f,%.3f is z=%.4f"
-                                % (epos[0], epos[1], epos[2] - opos))
+
+            epos[2] = epos[2] - opos
         except self.printer.command_error as e:
             reason = str(e)
             if "Timeout during endstop homing" in reason:
                 reason += HINT_TIMEOUT
-            #raise self.printer.command_error(reason)
-        
+                raise self.printer.command_error(reason)
+
+            elif "No trigger on probe after full movement" in reason:
+                # in our case this is not an error but desired behavior
+                epos = toolhead.get_position()
+                epos[2] = amount
+
+            else:
+                raise self.printer.command_error(reason)
+
         return epos[:3]
 
     def _move(self, coord, speed):
