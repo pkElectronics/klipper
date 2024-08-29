@@ -131,9 +131,23 @@ class BME280:
         self.printer = config.get_printer()
         self.name = config.get_name().split()[-1]
         self.reactor = self.printer.get_reactor()
-        self.i2c = bus.MCU_I2C_from_config(
-            config, default_addr=BME280_CHIP_ADDR, default_speed=100000)
-        self.mcu = self.i2c.get_mcu()
+
+        if config.get('i2c_mcu', None) is not None:
+            self.i2c = bus.MCU_I2C_from_config(
+                config, default_addr=BME280_CHIP_ADDR, default_speed=100000)
+            self.mcu = self.i2c.get_mcu()
+            self.spi = None
+            self.bus_read = self.bus_read_i2c
+            self.bus_write = self.i2c.bus_read_spi
+
+        else:
+            self.spi = bus.MCU_SPI_from_config(config)
+            self.mcu = self.spi.get_mcu()
+            self.i2c = None
+            self.bus_read = self.bus_read_spi
+            self.bus_write = self.bus_write_spi
+
+
         self.iir_filter = config.getint('bme280_iir_filter', 1)
         self.os_temp = config.getint('bme280_oversample_temp', 2)
         self.os_hum = config.getint('bme280_oversample_hum', 2)
@@ -158,6 +172,32 @@ class BME280:
         self.printer.register_event_handler("klippy:connect",
                                             self.handle_connect)
         self.last_gas_time = 0
+
+    def bus_read_i2c(self, regs, readlen):
+        return self.i2c.i2c_read(regs, readlen)
+
+    def bus_write_i2c(self, data):
+        return self.i2c.i2c_write(data)
+
+    def bus_read_spi(self, regs, readlen):
+        index = 0
+        wregs = []
+        if len(regs) != readlen:
+            for r in regs:
+                if index < len(regs):
+                   wregs[index] = regs[index] | 0x80
+                else:
+                    wregs[index] = wregs[index-1] +1
+
+                index+=1
+
+        return self.spi.spi_transfer(wregs)
+
+
+    def bus_write_spi(self, data):
+        return self.spi.spi_transfer(data)
+
+
 
     def handle_connect(self):
         self._init_bmxx80()
@@ -761,19 +801,19 @@ class BME280:
     def read_id(self):
         # read chip id register
         regs = [BME_CHIP_ID_REG]
-        params = self.i2c.i2c_read(regs, 1)
+        params = self.bus_read(regs, 1)
         return bytearray(params['response'])[0]
 
     def read_bmp3_id(self):
         # read chip id register
         regs = [BMP3_CHIP_ID_REG]
-        params = self.i2c.i2c_read(regs, 1)
+        params = self.bus_read(regs, 1)
         return bytearray(params['response'])[0]
 
     def read_register(self, reg_name, read_len):
         # read a single register
         regs = [self.chip_registers[reg_name]]
-        params = self.i2c.i2c_read(regs, read_len)
+        params = self.bus_read(regs, read_len)
         return bytearray(params['response'])
 
     def write_register(self, reg_name, data, wait = False):
@@ -782,7 +822,7 @@ class BME280:
         reg = self.chip_registers[reg_name]
         data.insert(0, reg)
         if not wait:
-            self.i2c.i2c_write(data)
+            self.bus_write(data)
         else:
             self.i2c.i2c_write_wait_ack(data)
 
