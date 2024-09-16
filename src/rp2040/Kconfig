@@ -141,4 +141,25 @@ config RP2040_CANBUS_GPIO_TX
     default 5
     range 0 29
 
+config USE_STATIC_CANBUS_ADDR
+    bool "Enable the usage of a static canbus address" if CANBUS
+
+config USE_HW_AUGMENTED_CANBUS_ADDR
+    bool "Enable the usage of gpio pins to alter the canbus address" if USE_STATIC_CANBUS_ADDR
+
+
+config RP2040_CANBUS_ADDR_GPIO_0
+    int "Static CAN Address Bit 0 Gpio number" if USE_HW_AUGMENTED_CANBUS_ADDR
+    default 0
+    range 0 29
+
+config RP2040_CANBUS_ADDR_GPIO_1
+    int "Static CAN Address Bit 0 Gpio number" if USE_HW_AUGMENTED_CANBUS_ADDR
+    default 1
+    range 0 29
+
+config RP2040_CANBUS_STATIC_ADDR
+    string "Static Canbus Address" if USE_STATIC_CANBUS_ADDR
+
+
 endif

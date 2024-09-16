@@ -14,8 +14,15 @@
 #include "hardware/structs/ioqspi.h" // ioqspi_hw
 #include "hardware/structs/ssi.h" // ssi_hw
 #include "internal.h"
+#include "gpio.h"
+#include "ctr.h" //DECL_CTR
+#include "chipid.h"
 
 #define CHIP_UID_LEN 8
+
+#if CONFIG_USE_STATIC_CANBUS_ADDR == 1
+   DECL_CTR("DECL_STATIC_CAN_ADDR " __stringify(CONFIG_RP2040_CANBUS_STATIC_ADDR));
+#endif
 
 static struct {
     struct usb_string_descriptor desc;
@@ -125,8 +132,24 @@ chipid_init(void)
         return;
 
     uint8_t data[8] = {0};
-    read_unique_id(data);
 
+    if(CONFIG_USE_STATIC_CANBUS_ADDR){
+
+        memcpy(data+(static_can_addr_size-CHIP_UID_LEN),static_can_addr,static_can_addr_size); //copy static id to the most significant bytes of the chipid data
+
+        if(CONFIG_USE_HW_AUGMENTED_CANBUS_ADDR){
+
+            struct gpio_in g0 = gpio_in_setup(CONFIG_RP2040_CANBUS_ADDR_GPIO_0,0);
+            if(gpio_in_read(g0)){data[0] |= 0x01;}
+
+            struct gpio_in g1 = gpio_in_setup(CONFIG_RP2040_CANBUS_ADDR_GPIO_1,0);
+            if(gpio_in_read(g1)){data[0] |= 0x02;}
+
+        }
+
+    }else{
+       read_unique_id(data);
+    }
     if (CONFIG_USB_SERIAL_NUMBER_CHIPID)
         usb_fill_serial(&cdc_chipid.desc, ARRAY_SIZE(cdc_chipid.data), data);
     if (CONFIG_CANBUS)

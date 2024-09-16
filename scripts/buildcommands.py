@@ -197,6 +197,39 @@ const int initial_pins_size PROGMEM = ARRAY_SIZE(initial_pins);
 
 Handlers.append(HandleInitialPins())
 
+######################################################################
+# Static canbus address
+######################################################################
+
+class HandleStaticCanbusAddress:
+    def __init__(self):
+        self.addr_bytes = []
+        self.ctr_dispatch = { 'DECL_STATIC_CAN_ADDR': self.decl_static_can_addr }
+    def decl_static_can_addr(self, req):
+        addr = req.split(None, 1)[1].strip()
+        if addr.startswith('"') and addr.endswith('"'):
+            addr = addr[1:-1]
+        if addr:
+            self.addr_bytes = [p.strip() for p in addr.split(',')]
+
+            if len(self.addr_bytes) > 8:
+                error("Maximum length of Address is 8 bytes")
+
+            HandlerConstants.decl_constant_str(
+                "_DECL_CONSTANT_STR STATIC_CAN_ADDR "
+                + ','.join(self.addr_bytes))
+    def update_data_dictionary(self, data):
+        pass
+
+    def generate_code(self, options):
+        fmt = """
+const uint8_t static_can_addr[] PROGMEM = {%s
+};
+const int static_can_addr_size PROGMEM = ARRAY_SIZE(static_can_addr);
+"""
+        return fmt % (','.join(self.addr_bytes),)
+
+Handlers.append(HandleStaticCanbusAddress())
 
 ######################################################################
 # ARM IRQ vector table generation
