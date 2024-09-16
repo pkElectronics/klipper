@@ -138,10 +138,10 @@ class BME280:
             self.mcu = self.i2c.get_mcu()
             self.spi = None
             self.bus_read = self.bus_read_i2c
-            self.bus_write = self.i2c.bus_read_spi
+            self.bus_write = self.bus_write_i2c
 
         else:
-            self.spi = bus.MCU_SPI_from_config(config)
+            self.spi = bus.MCU_SPI_from_config(config,3)
             self.mcu = self.spi.get_mcu()
             self.i2c = None
             self.bus_read = self.bus_read_spi
@@ -180,21 +180,19 @@ class BME280:
         return self.i2c.i2c_write(data)
 
     def bus_read_spi(self, regs, readlen):
-        index = 0
-        wregs = []
-        if len(regs) != readlen:
-            for r in regs:
-                if index < len(regs):
-                   wregs[index] = regs[index] | 0x80
-                else:
-                    wregs[index] = wregs[index-1] +1
+        wregs = list()
 
-                index+=1
+        for r in regs:
+            wregs.append(r)
+            wregs.append(0xFF)
+            wregs.append(0xFF)
 
-        return self.spi.spi_transfer(wregs)
+
+        return self.spi.spi_transfer_with_preface(regs,[0x00])
 
 
     def bus_write_spi(self, data):
+        data[0] = data[0] & 0x7F
         return self.spi.spi_transfer(data)
 
 
@@ -821,7 +819,7 @@ class BME280:
             data = [data]
         reg = self.chip_registers[reg_name]
         data.insert(0, reg)
-        if not wait:
+        if not wait or self.i2c is None:
             self.bus_write(data)
         else:
             self.i2c.i2c_write_wait_ack(data)
