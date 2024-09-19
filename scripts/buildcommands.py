@@ -225,9 +225,9 @@ class HandleStaticCanbusAddress:
         fmt = """
 const uint8_t static_can_addr[] PROGMEM = {%s
 };
-const int static_can_addr_size PROGMEM = ARRAY_SIZE(static_can_addr);
+const int static_can_addr_size PROGMEM = %d;
 """
-        return fmt % (','.join(self.addr_bytes),)
+        return fmt % (','.join(self.addr_bytes),len(self.addr_bytes))
 
 Handlers.append(HandleStaticCanbusAddress())
 

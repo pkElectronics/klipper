@@ -131,11 +131,14 @@ chipid_init(void)
     if (!(CONFIG_USB_SERIAL_NUMBER_CHIPID || CONFIG_CANBUS))
         return;
 
-    uint8_t data[8] = {0};
+    uint8_t data[8] = {0}; //canbus uuid length
+
+    uint8_t uuid_len = 0;
 
     if(CONFIG_USE_STATIC_CANBUS_ADDR){
+        uuid_len = 6;
 
-        memcpy(data+(static_can_addr_size-CHIP_UID_LEN),static_can_addr,static_can_addr_size); //copy static id to the most significant bytes of the chipid data
+        memcpy(data+(uuid_len-static_can_addr_size),static_can_addr,static_can_addr_size); //copy static id to the most significant bytes of the chipid data
 
         if(CONFIG_USE_HW_AUGMENTED_CANBUS_ADDR){
 
@@ -148,11 +151,12 @@ chipid_init(void)
         }
 
     }else{
+       uuid_len = CHIP_UID_LEN;
        read_unique_id(data);
     }
     if (CONFIG_USB_SERIAL_NUMBER_CHIPID)
         usb_fill_serial(&cdc_chipid.desc, ARRAY_SIZE(cdc_chipid.data), data);
     if (CONFIG_CANBUS)
-        canserial_set_uuid(data, CHIP_UID_LEN);
+        canserial_set_uuid(data, uuid_len);
 }
 DECL_INIT(chipid_init);
