@@ -329,8 +329,12 @@ DECL_COMMAND_FLAGS(command_get_canbus_id, HF_IN_SHUTDOWN, "get_canbus_id");
 void
 canserial_set_uuid(uint8_t *raw_uuid, uint32_t raw_uuid_len)
 {
-    uint64_t hash = fasthash64(raw_uuid, raw_uuid_len, 0xA16231A7);
-    memcpy(CanData.uuid, &hash, sizeof(CanData.uuid));
+    if(raw_uuid_len != sizeof(CanData.uuid)){
+        uint64_t hash = fasthash64(raw_uuid, raw_uuid_len, 0xA16231A7);
+        memcpy(CanData.uuid, &hash, sizeof(CanData.uuid));
+    }else{
+        memcpy(CanData.uuid, raw_uuid, sizeof(CanData.uuid));
+    } 
     canserial_notify_rx();
 }
 
