@@ -212,8 +212,8 @@ class HandleStaticCanbusAddress:
         if addr:
             self.addr_bytes = [p.strip() for p in addr.split(',')]
 
-            if len(self.addr_bytes) > 8:
-                error("Maximum length of Address is 8 bytes")
+            if len(self.addr_bytes) > 6:
+                error("Maximum length of Address is 6 bytes")
 
             HandlerConstants.decl_constant_str(
                 "_DECL_CONSTANT_STR STATIC_CAN_ADDR "
