@@ -153,7 +153,7 @@ class BME280:
         self.gas_heat_temp = config.getint('bme280_gas_target_temp', 320)
         self.gas_heat_duration = config.getint('bme280_gas_heat_duration', 150)
 
-        self.sensor_optional = config.getbool('bme280_optional', False)
+        self.sensor_optional = config.getboolean('bme280_optional', False)
         logging.info("BMxx80: Oversampling: Temp %dx Humid %dx Pressure %dx" % (
             pow(2, self.os_temp - 1), pow(2, self.os_hum - 1),
             pow(2, self.os_pres - 1)))
