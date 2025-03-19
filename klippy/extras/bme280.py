@@ -4,6 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
+
 from . import bus
 
 REPORT_TIME = .8
@@ -95,7 +96,6 @@ STATUS_MEASURING = 1 << 3
 STATUS_IM_UPDATE = 1
 MODE = 1
 MODE_PERIODIC = 3
-RUN_GAS = 1 << 4
 NB_CONV_0 = 0
 EAS_NEW_DATA = 1 << 7
 GAS_DONE = 1 << 6
@@ -289,7 +289,14 @@ class BME280:
             dig['MD'] = get_signed_short_msb(calib_data_1[20:22])
             return dig
 
-        chip_id = self.read_id() or self.read_bmp3_id()
+        try:
+            chip_id = self.read_id() or self.read_bmp3_id()
+        except Exception as e:
+            if self.sensor_optional:
+                return
+            else:
+                raise e
+
         if chip_id not in BME_CHIPS.keys():
             logging.info("bme280: Unknown Chip ID received %#x" % chip_id)
         else:
@@ -300,6 +307,7 @@ class BME280:
             if self.chip_type == "BME680":
                 variant_reg = self.read_variant()
                 if variant_reg == 0x01:
+                    logging.info("bme280: Well, actually it's a BME688")
                     self.chip_type = "BME688"
 
         # Reset chip
@@ -323,6 +331,8 @@ class BME280:
         elif self.chip_type == 'BMP180':
             self.sample_timer = self.reactor.register_timer(self._sample_bmp180)
             self.chip_registers = BMP180_REGS
+            self.run_gas_bit = 1 << 4
+
         elif self.chip_type == 'BMP388':
             self.chip_registers = BMP388_REGS
             self.write_register(
@@ -341,9 +351,13 @@ class BME280:
 
             self.sample_timer = self.reactor.register_timer(self._sample_bmp388)
         elif self.chip_type == 'BME688':
-            self.max_sample_time = 0.5
+            self.max_sample_time = \
+                (1.25 + (2.3 * self.os_temp) + ((2.3 * self.os_pres) + .575)
+                 + ((2.3 * self.os_hum) + .575)) / 1000
             self.sample_timer = self.reactor.register_timer(self._sample_bme680)
             self.chip_registers = BME688_REGS
+            self.run_gas_bit = 1 << 5
+
         elif self.chip_type == 'BME280':
             self.max_sample_time = \
                 (1.25 + (2.3 * self.os_temp) + ((2.3 * self.os_pres) + .575)
@@ -423,7 +437,7 @@ class BME280:
             meas = self.os_temp << 5 | self.os_pres << 2 | MODE_PERIODIC
             self.write_register('CTRL_MEAS', meas, wait=True)
 
-        if self.chip_type == 'BME680':
+        if self.chip_type in ('BME680', 'BME688'):
             self.write_register('CONFIG', self.iir_filter << 2)
             # Should be set once and reused on every mode register write
             self.write_register('CTRL_HUM', self.os_hum & 0x07)
@@ -549,7 +563,7 @@ class BME280:
         run_gas = False
         # Check VOC once a while
         if self.reactor.monotonic() - self.last_gas_time > 3:
-            gas_config = RUN_GAS | NB_CONV_0
+            gas_config = self.run_gas_bit | NB_CONV_0
             self.write_register('CTRL_GAS_1', [gas_config])
             run_gas = True
 
@@ -588,6 +602,7 @@ class BME280:
         self.humidity = self._compensate_humidity_bme680(humid_raw)
 
         gas_valid = ((gas_data[1] & 0x20) == 0x20)
+
         if gas_valid:
             gas_heater_stable = ((gas_data[1] & 0x10) == 0x10)
             if not gas_heater_stable:
@@ -599,6 +614,7 @@ class BME280:
             gas_config = NB_CONV_0
             self.write_register('CTRL_GAS_1', [gas_config])
             self.last_gas_time = self.reactor.monotonic()
+
 
         if self.temp < self.min_temp or self.temp > self.max_temp:
             self.printer.invoke_shutdown(
