@@ -4,6 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
+import time
 
 from . import bus
 
@@ -151,6 +152,12 @@ class BME280:
         self.os_hum = config.getint('bme280_oversample_hum', 2)
         self.os_pres = config.getint('bme280_oversample_pressure', 2)
         self.gas_heat_temp = config.getint('bme280_gas_target_temp', 320)
+
+        self.gas_heat_temps_list = [200,220,240,260,280,300,320,340,360,380,400]
+        self.gas_heat_temps_index = 0
+        self.tgas = [0] * len(self.gas_heat_temps_list)
+        self.gas_complete = [0] * len(self.gas_heat_temps_list)
+
         self.gas_heat_duration = config.getint('bme280_gas_heat_duration', 150)
 
         self.sensor_optional = config.getboolean('bme280_optional', False)
@@ -289,13 +296,7 @@ class BME280:
             dig['MD'] = get_signed_short_msb(calib_data_1[20:22])
             return dig
 
-        try:
-            chip_id = self.read_id() or self.read_bmp3_id()
-        except Exception as e:
-            if self.sensor_optional:
-                return
-            else:
-                raise e
+        chip_id = self.read_id() or self.read_bmp3_id()
 
         if chip_id not in BME_CHIPS.keys():
             logging.info("bme280: Unknown Chip ID received %#x" % chip_id)
@@ -560,9 +561,12 @@ class BME280:
                 gas_done = True
             return new_data and gas_done and meas_done
 
-        run_gas = False
+        run_gas = True
         # Check VOC once a while
-        if self.reactor.monotonic() - self.last_gas_time > 3:
+        if self.reactor.monotonic() - self.last_gas_time > 3 or run_gas:
+
+            self._calc_and_update_heater_resistance(self.gas_heat_temps_list[self.gas_heat_temps_index])
+
             gas_config = self.run_gas_bit | NB_CONV_0
             self.write_register('CTRL_GAS_1', [gas_config])
             run_gas = True
@@ -610,11 +614,25 @@ class BME280:
             gas_raw = (gas_data[0] << 2) | ((gas_data[1] & 0xC0) >> 6)
             gas_range = (gas_data[1] & 0x0F)
             self.gas = self._compensate_gas(gas_raw, gas_range)
+            self.tgas[self.gas_heat_temps_index] = self.gas
             # Disable gas measurement on success
             gas_config = NB_CONV_0
             self.write_register('CTRL_GAS_1', [gas_config])
             self.last_gas_time = self.reactor.monotonic()
 
+
+
+            self.gas_heat_temps_index +=1
+            self.gas_heat_temps_index %= len(self.gas_heat_temps_list)
+
+            if self.gas_heat_temps_index == 0:
+                self.gas_complete = self.tgas
+
+                with open("/home/pi/vocdata.csv", 'a') as f:
+                    for i in range(0,len(self.gas_heat_temps_list)):
+                        t = round(time.time())
+                        f.write(
+                            f"{t};{self.name};{self.gas_heat_temps_list[i]};{self.tgas[i]}\r\n")
 
         if self.temp < self.min_temp or self.temp > self.max_temp:
             self.printer.invoke_shutdown(
@@ -770,6 +788,10 @@ class BME280:
 
         return duration_reg
 
+    def _calc_and_update_heater_resistance(self, target_temp):
+        res_heat_0 = self._calc_gas_heater_resistance(target_temp)
+        self.write_register('RES_HEAT_0', [res_heat_0])
+
     def _compensate_temp_bmp180(self, raw_temp):
         dig = self.dig
         x1 = (raw_temp - dig['AC6']) * dig['AC5'] / 32768.
@@ -845,6 +867,10 @@ class BME280:
             data['humidity'] = self.humidity
         if self.chip_type in ('BME680','BME688'):
             data['gas'] = self.gas
+            data['gas_complete'] = self.gas_complete
+            data["gas_complete_temperatures"] = self.gas_heat_temps_list
+
+
         return data
 
 
