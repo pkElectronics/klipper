@@ -20,6 +20,12 @@ MLX_REGS = {
     'TOBJ2': 0x08
 }
 
+MLX_FLOATMIN = -70.01
+MLX_FLOATMAX = 382.19
+MLX_INTMIN = 0x27AD
+MLX_INTMAX = 0x7FFF
+
+MLX_CONV_FACTOR = (MLX_FLOATMAX - MLX_FLOATMIN) / (MLX_INTMAX - MLX_INTMIN)
 
 class MLX90614:
     def __init__(self, config):
@@ -28,17 +34,16 @@ class MLX90614:
         self.reactor = self.printer.get_reactor()
         self.i2c = bus.MCU_I2C_from_config(
             config, default_addr=MLX_I2C_ADDR, default_speed=100000)
-        self.report_time = config.getint('aht10_report_time',30,minval=5)
-        self.temp = self.min_temp = self.max_temp = self.humidity = 0.
-        self.sample_timer = self.reactor.register_timer(self._sample_aht10)
-        self.printer.add_object("aht10 " + self.name, self)
+        self.report_time = config.getint('mlx90614_report_time',30,minval=5)
+        self.datasource = config.getchoice('mlx90614_datasource',["ambient","object1","object2","objectaverage"])
+        self.temp = self.min_temp = self.max_temp
+        self.sample_timer = self.reactor.register_timer(self._sample_mlx)
+        self.printer.add_object("mlx90614 " + self.name, self)
         self.printer.register_event_handler("klippy:connect",
                                             self.handle_connect)
-        self.is_calibrated  = False
-        self.init_sent = False
+
 
     def handle_connect(self):
-        self._init_aht10()
         self.reactor.update_timer(self.sample_timer, self.reactor.NOW)
 
     def setup_minmax(self, min_temp, max_temp):
@@ -51,95 +56,59 @@ class MLX90614:
     def get_report_time_delta(self):
         return self.report_time
 
+    def _read_float_from_ram(self, addr):
+        command = [ (MLX_I2C_ADDR << 1)& 0xFE, addr, (MLX_I2C_ADDR << 1) | 0x01]
+
+        result = self.i2c.i2c_read(command,3)
+        if result is None:
+            logging.warning("mlx90614: received data from i2c_read is None")
+            return 0
+
+        data = bytearray(result['response'])
+        raw = ((data[0] & 0x7F) << 8) | data[1]
+        raw -= MLX_INTMIN
+        raw *= MLX_CONV_FACTOR
+
+        return raw
+
+
+
     def _make_measurement(self):
-        if not self.init_sent:
-            return False
-
-        data = None
-
-        is_busy = True
-        cycles = 0
 
         try:
-            while is_busy:
-                # Check if we're constantly busy. If so, send soft-reset
-                # and issue warning.
-                if is_busy and cycles > AHT10_MAX_BUSY_CYCLES:
-                    logging.warning("aht10: device reported busy after " +
-                        "%d cycles, resetting device"% AHT10_MAX_BUSY_CYCLES)
-                    self._reset_device()
-                    data = None
-                    break
 
-                cycles += 1
-                # Write command for updating temperature+status bit
-                self.i2c.i2c_write(AHT10_COMMANDS['MEASURE'])
-                # Wait 110ms after first read, 75ms minimum
-                self.reactor.pause(self.reactor.monotonic() + .110)
+            readaddr = 0
+            if self.datasource == "ambient":
+                readaddr = MLX_REGS["TA"]
+            elif self.datasource == "object1" or self.datasource == "objectaverage":
+                readaddr = MLX_REGS["TOBJ1"]
+            elif self.datasource == "object2":
+                readaddr = MLX_REGS["TOBJ2"]
 
-                # Read data
-                read = self.i2c.i2c_read([], 6)
-                if read is None:
-                    logging.warning("aht10: received data from" +
-                                    " i2c_read is None")
-                    continue
-                data = bytearray(read['response'])
-                if len(data) < 6:
-                    logging.warning("aht10: received bytes less than" +
-                                    " expected 6 [%d]"%len(data))
-                    continue
+            measurement = self._read_float_from_ram(readaddr)
 
-                self.is_calibrated = True if (data[0] & 0b00000100) else False
-                is_busy = True if (data[0] & 0b01000000) else False
+            if self.datasource == "objectaverage":
+                measurement += self._read_float_from_ram(MLX_REGS["TOBJ2"])
+                measurement /= 2
 
-            if is_busy:
-                return False
         except Exception as e:
-            logging.exception("aht10: exception encountered" +
+            logging.exception("mlx90614: exception encountered" +
                               " reading data: %s"%str(e))
             return False
 
-        temp = ((data[3] & 0x0F) << 16) | (data[4] << 8) | data[5]
-        self.temp = ((temp*200) / 1048576) - 50
-        hum = ((data[1] << 16) | (data[2] << 8) | data[3]) >> 4
-        self.humidity = int(hum * 100 / 1048576)
-
-        # Clamp humidity
-        if (self.humidity > 100):
-            self.humidity = 100
-        elif (self.humidity < 0):
-            self.humidity = 0
+        self.temp = measurement
 
         return True
 
-    def _reset_device(self):
-        if not self.init_sent:
-            return
 
-        # Reset device
-        self.i2c.i2c_write(AHT10_COMMANDS['RESET'])
-        # Wait 100ms after reset
-        self.reactor.pause(self.reactor.monotonic() + .10)
-
-    def _init_aht10(self):
-        # Init device
-        self.i2c.i2c_write(AHT10_COMMANDS['INIT'])
-        # Wait 100ms after init
-        self.reactor.pause(self.reactor.monotonic() + .10)
-        self.init_sent = True
-
-        if self._make_measurement():
-            logging.info("aht10: successfully initialized, initial temp: " +
-                         "%.3f, humidity: %.3f"%(self.temp, self.humidity))
-
-    def _sample_aht10(self, eventtime):
+    def _sample_mlx(self, eventtime):
         if not self._make_measurement():
-            self.temp = self.humidity = .0
+            self.temp = .0
             return self.reactor.NEVER
 
         if self.temp < self.min_temp or self.temp > self.max_temp:
             self.printer.invoke_shutdown(
-                "AHT10 temperature %0.1f outside range of %0.1f:%.01f"
+                "MLX90614 temperature %0.1f outside range of %0.1f:%.01f"
                 % (self.temp, self.min_temp, self.max_temp))
 
         measured_time = self.reactor.monotonic()
@@ -150,11 +119,10 @@ class MLX90614:
     def get_status(self, eventtime):
         return {
             'temperature': round(self.temp, 2),
-            'humidity': self.humidity,
         }
 
 
 def load_config(config):
     # Register sensor
     pheater = config.get_printer().lookup_object("heaters")
-    pheater.add_sensor_factory("AHT10", AHT10)
+    pheater.add_sensor_factory("MLX90614", MLX90614)
