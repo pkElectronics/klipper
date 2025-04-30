@@ -12,7 +12,7 @@ from . import bus
 #       MLX90614ESF-BCC -    Tested on RP2040
 ######################################################################
 
-MLX_I2C_ADDR= 0x5A
+MLX_I2C_ADDR = 0x5A
 
 MLX_REGS = {
     'TA': 0x06,
@@ -20,12 +20,6 @@ MLX_REGS = {
     'TOBJ2': 0x08
 }
 
-MLX_FLOATMIN = -70.01
-MLX_FLOATMAX = 382.19
-MLX_INTMIN = 0x27AD
-MLX_INTMAX = 0x7FFF
-
-MLX_CONV_FACTOR = (MLX_FLOATMAX - MLX_FLOATMIN) / (MLX_INTMAX - MLX_INTMIN)
 
 class MLX90614:
     def __init__(self, config):
@@ -34,9 +28,9 @@ class MLX90614:
         self.reactor = self.printer.get_reactor()
         self.i2c = bus.MCU_I2C_from_config(
             config, default_addr=MLX_I2C_ADDR, default_speed=100000)
-        self.report_time = config.getint('mlx90614_report_time',30,minval=5)
+        self.report_time = config.getint('mlx90614_report_time',30,minval=1)
         self.datasource = config.getchoice('mlx90614_datasource',["ambient","object1","object2","objectaverage"])
-        self.temp = self.min_temp = self.max_temp
+        self.temp = self.min_temp = self.max_temp = 0.
         self.sample_timer = self.reactor.register_timer(self._sample_mlx)
         self.printer.add_object("mlx90614 " + self.name, self)
         self.printer.register_event_handler("klippy:connect",
@@ -57,19 +51,18 @@ class MLX90614:
         return self.report_time
 
     def _read_float_from_ram(self, addr):
-        command = [ (MLX_I2C_ADDR << 1)& 0xFE, addr, (MLX_I2C_ADDR << 1) | 0x01]
 
-        result = self.i2c.i2c_read(command,3)
+        result = self.i2c.i2c_read([addr],3)
         if result is None:
             logging.warning("mlx90614: received data from i2c_read is None")
             return 0
 
         data = bytearray(result['response'])
-        raw = ((data[0] & 0x7F) << 8) | data[1]
-        raw -= MLX_INTMIN
-        raw *= MLX_CONV_FACTOR
+        raw = ((data[1]) << 8) | data[0]
+        temp_kelvin = raw * 0.02
+        temp_celsius = temp_kelvin - 273.15
 
-        return raw
+        return temp_celsius
 
 
 
