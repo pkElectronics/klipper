@@ -1,4 +1,4 @@
-
+import threading
 
 KELVIN_TO_CELSIUS = -273.15
 
@@ -7,7 +7,9 @@ class IndirectHeater:
     def __init__(self,config):
         self.printer = config.get_printer()
         self.name = config.get_name().split()[-1]
+
         self.reactor = self.printer.get_reactor()
+        self.lock = threading.Lock()
 
 
         pheaters = self.printer.load_object(config, 'heaters')
@@ -42,7 +44,18 @@ class IndirectHeater:
 
         #self.indirect_control_cycle_time = config.getint("indirect_control_cycle_time",1,minval=0,maxval=20)
 
+        gcode = self.printer.lookup_object("gcode")
+        gcode.register_mux_command("SET_HEATER_TEMPERATURE", "HEATER",
+                                   self.name, self.cmd_SET_HEATER_TEMPERATURE,
+                                   desc=self.cmd_SET_HEATER_TEMPERATURE_help)
 
+
+
+    cmd_SET_HEATER_TEMPERATURE_help = "Sets a heater temperature"
+    def cmd_SET_HEATER_TEMPERATURE(self, gcmd):
+        temp = gcmd.get_float('TARGET', 0.)
+        pheaters = self.printer.lookup_object('heaters')
+        pheaters.set_temperature(self, temp)
 
     def temperature_callback(self, read_time, temp):
         self.last_temp = temp
@@ -61,6 +74,12 @@ class IndirectHeater:
             indirect_target = self.indirect_control_tmax
 
         return indirect_target
+
+    def get_status(self, eventtime):
+        with self.lock:
+            target_temp = self.target_temp
+            temp = self.last_temp
+        return {'temperature': round(temp, 2), 'target': target_temp}
 
 
 ######################################################################
