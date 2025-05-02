@@ -1,3 +1,4 @@
+import logging
 import threading
 
 KELVIN_TO_CELSIUS = -273.15
@@ -22,6 +23,9 @@ class IndirectHeater:
         self.sensor.setup_callback(self.temperature_callback)
         pheaters.register_sensor(config, self)
 
+        self.smooth_time = config.getfloat('smooth_time', 1., above=0.)
+
+
         self.last_temp = 0.
         self.measured_min = 99999999.
         self.measured_max = 0.
@@ -29,13 +33,12 @@ class IndirectHeater:
         self.target_temp = 0
 
         self.heater_name = config.get("heater_name")
-        self.heater_obj = self.printer.lookup_object(self.heater_name)
-
+        self.heater_obj = None #will be loaded in on connect
         algos = {'watermark': ControlBangBang, 'pid': ControlPID}
         algo = config.getchoice('control', algos)
         self.control = algo(self, config)
 
-        self.indirect_mode = config.getchoice("indirect_control_mode",{"delta","full"})
+        self.indirect_mode = config.getchoice("indirect_control_mode",["delta","full"])
 
         if self.indirect_mode == "delta":
             self.indirect_control_delta = config.getfloat("indirect_control_delta",0, minval=0)
@@ -49,13 +52,24 @@ class IndirectHeater:
                                    self.name, self.cmd_SET_HEATER_TEMPERATURE,
                                    desc=self.cmd_SET_HEATER_TEMPERATURE_help)
 
+        self.printer.register_event_handler("klippy:connect",
+                                            self.handle_connect)
 
+
+    def handle_connect(self):
+        self.heater_obj = self.printer.lookup_object(self.heater_name)
+        logging.info(self.heater_name)
+
+    def get_smooth_time(self):
+        return self.smooth_time
+
+    def get_temp(self,read_time):
+        return self.last_temp,self.target_temp
 
     cmd_SET_HEATER_TEMPERATURE_help = "Sets a heater temperature"
     def cmd_SET_HEATER_TEMPERATURE(self, gcmd):
         temp = gcmd.get_float('TARGET', 0.)
-        pheaters = self.printer.lookup_object('heaters')
-        pheaters.set_temperature(self, temp)
+        self.target_temp = temp
 
     def temperature_callback(self, read_time, temp):
         self.last_temp = temp
@@ -67,6 +81,8 @@ class IndirectHeater:
 
 
     def get_setpoint_baseline_temp(self):
+        if self.target_temp == 0:
+            return 0.
 
         if self.indirect_mode == "delta":
             indirect_target = min(self.target_temp + self.indirect_control_delta, self.indirect_control_tmax)
@@ -164,5 +180,6 @@ class ControlPID:
                 or abs(self.prev_temp_deriv) > PID_SETTLE_SLOPE)
 
 
-def load_config(config):
+def load_config_prefix(config):
     return IndirectHeater(config)
+
