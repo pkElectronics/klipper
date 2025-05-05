@@ -12,6 +12,8 @@ class IndirectHeater:
         self.reactor = self.printer.get_reactor()
         self.lock = threading.Lock()
 
+        self.engaged = True
+
 
         pheaters = self.printer.load_object(config, 'heaters')
         self.sensor = pheaters.setup_sensor(config)
@@ -71,13 +73,22 @@ class IndirectHeater:
         temp = gcmd.get_float('TARGET', 0.)
         self.target_temp = temp
 
+    cmd_INDIRECT_HEATER_DISENGAGE_help = "Decouples the physical heater from the indirect heater"
+    def cmd_INDIRECT_HEATER_DISENGAGE(self, gcmd):
+        self.engaged = False
+
+    cmd_INDIRECT_HEATER_ENGAGE_help = "Establishes control over the physical heater"
+    def cmd_INDIRECT_HEATER_ENGAGE(self, gcmd):
+        self.engaged = True
+
     def temperature_callback(self, read_time, temp):
         self.last_temp = temp
         if temp:
             self.measured_min = min(self.measured_min, temp)
             self.measured_max = max(self.measured_max, temp)
 
-        self.control.temperature_update(read_time, temp, self.target_temp, self.get_setpoint_baseline_temp())
+        if self.engaged:
+            self.control.temperature_update(read_time, temp, self.target_temp, self.get_setpoint_baseline_temp())
 
 
     def get_setpoint_baseline_temp(self):

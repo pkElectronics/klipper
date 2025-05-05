@@ -620,19 +620,11 @@ class BME280:
             self.write_register('CTRL_GAS_1', [gas_config])
             self.last_gas_time = self.reactor.monotonic()
 
-
-
             self.gas_heat_temps_index +=1
             self.gas_heat_temps_index %= len(self.gas_heat_temps_list)
 
             if self.gas_heat_temps_index == 0:
                 self.gas_complete = self.tgas
-
-                with open("/home/pi/vocdata.csv", 'a') as f:
-                    for i in range(0,len(self.gas_heat_temps_list)):
-                        t = round(time.time())
-                        f.write(
-                            f"{t};{self.name};{self.gas_heat_temps_list[i]};{self.tgas[i]}\r\n")
 
         if self.temp < self.min_temp or self.temp > self.max_temp:
             self.printer.invoke_shutdown(
