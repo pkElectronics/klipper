@@ -4,6 +4,8 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
+import time
+
 from . import bus
 
 REPORT_TIME = .8
@@ -51,6 +53,17 @@ BME680_REGS = {
     'RES_HEAT_VAL': 0x00, 'RES_HEAT_RANGE': 0x02, 'RANGE_SWITCHING_ERROR': 0x04
 }
 
+BME688_REGS = {
+    'RESET': 0xE0, 'CTRL_HUM': 0x72, 'CTRL_GAS_1': 0x71, 'CTRL_GAS_0': 0x70,
+    'GAS_WAIT_0': 0x64, 'RES_HEAT_0': 0x5A, 'IDAC_HEAT_0': 0x50,
+    'STATUS': 0x73, 'EAS_STATUS_0': 0x1D, 'CTRL_MEAS': 0x74, 'CONFIG': 0x75,
+    'GAS_R_LSB': 0x2D, 'GAS_R_MSB': 0x2C,
+    'PRESSURE_MSB': 0x1F, 'PRESSURE_LSB': 0x20, 'PRESSURE_XLSB': 0x21,
+    'TEMP_MSB': 0x22, 'TEMP_LSB': 0x23, 'TEMP_XLSB': 0x24,
+    'HUM_MSB': 0x25, 'HUM_LSB': 0x26, 'CAL_1': 0x88, 'CAL_2': 0xE1,
+    'RES_HEAT_VAL': 0x00, 'RES_HEAT_RANGE': 0x02, 'RANGE_SWITCHING_ERROR': 0x04
+}
+
 BME680_GAS_CONSTANTS = {
     0: (1., 8000000.),
     1: (1., 4000000.),
@@ -84,7 +97,6 @@ STATUS_MEASURING = 1 << 3
 STATUS_IM_UPDATE = 1
 MODE = 1
 MODE_PERIODIC = 3
-RUN_GAS = 1 << 4
 NB_CONV_0 = 0
 EAS_NEW_DATA = 1 << 7
 GAS_DONE = 1 << 6
@@ -97,6 +109,7 @@ BME_CHIPS = {
 }
 BME_CHIP_ID_REG = 0xD0
 BMP3_CHIP_ID_REG = 0x00
+BME_CHIP_VARIANT_REG = 0xF0
 
 
 def get_twos_complement(val, bit_size):
@@ -139,7 +152,15 @@ class BME280:
         self.os_hum = config.getint('bme280_oversample_hum', 2)
         self.os_pres = config.getint('bme280_oversample_pressure', 2)
         self.gas_heat_temp = config.getint('bme280_gas_target_temp', 320)
+
+        self.gas_heat_temps_list = [200,220,240,260,280,300,320,340,360,380,400]
+        self.gas_heat_temps_index = 0
+        self.tgas = [0] * len(self.gas_heat_temps_list)
+        self.gas_complete = [0] * len(self.gas_heat_temps_list)
+
         self.gas_heat_duration = config.getint('bme280_gas_heat_duration', 150)
+
+        self.sensor_optional = config.getboolean('bme280_optional', False)
         logging.info("BMxx80: Oversampling: Temp %dx Humid %dx Pressure %dx" % (
             pow(2, self.os_temp - 1), pow(2, self.os_hum - 1),
             pow(2, self.os_pres - 1)))
@@ -276,12 +297,19 @@ class BME280:
             return dig
 
         chip_id = self.read_id() or self.read_bmp3_id()
+
         if chip_id not in BME_CHIPS.keys():
             logging.info("bme280: Unknown Chip ID received %#x" % chip_id)
         else:
             self.chip_type = BME_CHIPS[chip_id]
             logging.info("bme280: Found Chip %s at %#x" % (
                 self.chip_type, self.i2c.i2c_address))
+
+            if self.chip_type == "BME680":
+                variant_reg = self.read_variant()
+                if variant_reg == 0x01:
+                    logging.info("bme280: Well, actually it's a BME688")
+                    self.chip_type = "BME688"
 
         # Reset chip
         self.write_register('RESET', [RESET_CHIP_VALUE], wait=True)
@@ -304,6 +332,8 @@ class BME280:
         elif self.chip_type == 'BMP180':
             self.sample_timer = self.reactor.register_timer(self._sample_bmp180)
             self.chip_registers = BMP180_REGS
+            self.run_gas_bit = 1 << 4
+
         elif self.chip_type == 'BMP388':
             self.chip_registers = BMP388_REGS
             self.write_register(
@@ -321,6 +351,14 @@ class BME280:
             self.write_register("INT_CTRL", [BMP388_REG_VAL_DRDY_EN])
 
             self.sample_timer = self.reactor.register_timer(self._sample_bmp388)
+        elif self.chip_type == 'BME688':
+            self.max_sample_time = \
+                (1.25 + (2.3 * self.os_temp) + ((2.3 * self.os_pres) + .575)
+                 + ((2.3 * self.os_hum) + .575)) / 1000
+            self.sample_timer = self.reactor.register_timer(self._sample_bme680)
+            self.chip_registers = BME688_REGS
+            self.run_gas_bit = 1 << 5
+
         elif self.chip_type == 'BME280':
             self.max_sample_time = \
                 (1.25 + (2.3 * self.os_temp) + ((2.3 * self.os_pres) + .575)
@@ -334,6 +372,10 @@ class BME280:
             self.sample_timer = self.reactor.register_timer(self._sample_bme280)
             self.chip_registers = BME280_REGS
 
+        if self.chip_type in ('BME688', 'BME680', 'BME280'):
+            self.write_register('CONFIG', (self.iir_filter & 0x07) << 2)
+
+
         # Read out and calculate the trimming parameters
         if self.chip_type == 'BMP180':
             cal_1 = self.read_register('CAL_1', 22)
@@ -346,7 +388,7 @@ class BME280:
             self.dig = read_calibration_data_bme280(cal_1, cal_2)
         elif self.chip_type == 'BMP280':
             self.dig = read_calibration_data_bmp280(cal_1)
-        elif self.chip_type == 'BME680':
+        elif self.chip_type in ('BME688','BME680'):
             self.dig = read_calibration_data_bme680(cal_1, cal_2)
         elif self.chip_type == 'BMP180':
             self.dig = read_calibration_data_bmp180(cal_1)
@@ -396,7 +438,7 @@ class BME280:
             meas = self.os_temp << 5 | self.os_pres << 2 | MODE_PERIODIC
             self.write_register('CTRL_MEAS', meas, wait=True)
 
-        if self.chip_type == 'BME680':
+        if self.chip_type in ('BME680', 'BME688'):
             self.write_register('CONFIG', self.iir_filter << 2)
             # Should be set once and reused on every mode register write
             self.write_register('CTRL_HUM', self.os_hum & 0x07)
@@ -519,10 +561,13 @@ class BME280:
                 gas_done = True
             return new_data and gas_done and meas_done
 
-        run_gas = False
+        run_gas = True
         # Check VOC once a while
-        if self.reactor.monotonic() - self.last_gas_time > 3:
-            gas_config = RUN_GAS | NB_CONV_0
+        if self.reactor.monotonic() - self.last_gas_time > 3 or run_gas:
+
+            self._calc_and_update_heater_resistance(self.gas_heat_temps_list[self.gas_heat_temps_index])
+
+            gas_config = self.run_gas_bit | NB_CONV_0
             self.write_register('CTRL_GAS_1', [gas_config])
             run_gas = True
 
@@ -561,6 +606,7 @@ class BME280:
         self.humidity = self._compensate_humidity_bme680(humid_raw)
 
         gas_valid = ((gas_data[1] & 0x20) == 0x20)
+
         if gas_valid:
             gas_heater_stable = ((gas_data[1] & 0x10) == 0x10)
             if not gas_heater_stable:
@@ -568,10 +614,17 @@ class BME280:
             gas_raw = (gas_data[0] << 2) | ((gas_data[1] & 0xC0) >> 6)
             gas_range = (gas_data[1] & 0x0F)
             self.gas = self._compensate_gas(gas_raw, gas_range)
+            self.tgas[self.gas_heat_temps_index] = self.gas
             # Disable gas measurement on success
             gas_config = NB_CONV_0
             self.write_register('CTRL_GAS_1', [gas_config])
             self.last_gas_time = self.reactor.monotonic()
+
+            self.gas_heat_temps_index +=1
+            self.gas_heat_temps_index %= len(self.gas_heat_temps_list)
+
+            if self.gas_heat_temps_index == 0:
+                self.gas_complete = self.tgas
 
         if self.temp < self.min_temp or self.temp > self.max_temp:
             self.printer.invoke_shutdown(
@@ -727,6 +780,10 @@ class BME280:
 
         return duration_reg
 
+    def _calc_and_update_heater_resistance(self, target_temp):
+        res_heat_0 = self._calc_gas_heater_resistance(target_temp)
+        self.write_register('RES_HEAT_0', [res_heat_0])
+
     def _compensate_temp_bmp180(self, raw_temp):
         dig = self.dig
         x1 = (raw_temp - dig['AC6']) * dig['AC5'] / 32768.
@@ -770,6 +827,13 @@ class BME280:
         params = self.i2c.i2c_read(regs, 1)
         return bytearray(params['response'])[0]
 
+    def read_variant(self):
+        # read chip variant register
+        regs = [BME_CHIP_VARIANT_REG]
+        params = self.i2c.i2c_read(regs, 1)
+        return bytearray(params['response'])[0]
+
+
     def read_register(self, reg_name, read_len):
         # read a single register
         regs = [self.chip_registers[reg_name]]
@@ -791,10 +855,14 @@ class BME280:
             'temperature': round(self.temp, 2),
             'pressure': self.pressure
         }
-        if self.chip_type in ('BME280', 'BME680'):
+        if self.chip_type in ('BME280', 'BME680', 'BME688'):
             data['humidity'] = self.humidity
-        if self.chip_type == 'BME680':
+        if self.chip_type in ('BME680','BME688'):
             data['gas'] = self.gas
+            data['gas_complete'] = self.gas_complete
+            data["gas_complete_temperatures"] = self.gas_heat_temps_list
+
+
         return data
 
 
