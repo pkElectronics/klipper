@@ -597,7 +597,7 @@ class ToolHead:
                 move.accel_t, move.cruise_t, move.decel_t,
                 move.start_pos[0], move.start_pos[1], move.start_pos[2],
                 move.axes_r[0], move.axes_r[1], move.axes_r[2],
-                move.start_v, move.cruise_v, move.accel)
+                move.start_v, move.cruise_v, move.accel, move.decel)
             next_move_time = (next_move_time + move.accel_t
                               + move.cruise_t + move.decel_t)
         self.lookahead.reset()
