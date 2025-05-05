@@ -87,6 +87,9 @@ defs_trapq = """
         double start_x, start_y, start_z;
         double x_r, y_r, z_r;
     };
+    
+    struct trapq *trapq_alloc(void);
+    void trapq_free(struct trapq *tq);
 
     void trapq_append(struct trapq *tq, double print_time
         , double accel_t, double cruise_t, double decel_t
