@@ -107,7 +107,7 @@ class Move:
         self.max_smoothed_v2 = min(
             max_start_v2, prev_move.max_smoothed_v2 + prev_move.smooth_delta_v2)
 
-        def set_junction(self, start_v2, cruise_v2, end_v2):
+    def set_junction(self, start_v2, cruise_v2, end_v2):
         # Determine accel, cruise, and decel portions of the move distance
         half_inv_accel = .5 / self.accel
         halv_inv_decel = .5 / self.decel
@@ -210,8 +210,6 @@ class LookAheadQueue:
         # Check if enough moves have been queued to reach the target flush time.
         return self.junction_flush <= 0.
 
-
-class DripModeEndSignal(Exception):
 
 BUFFER_TIME_LOW = 1.0
 BUFFER_TIME_HIGH = 2.0
@@ -605,7 +603,7 @@ class ToolHead:
         self.lookahead.reset()
         return next_move_time
 
-      def drip_move(self, newpos, speed, drip_completion):
+    def drip_move(self, newpos, speed, drip_completion):
         # Create and verify move is valid
         newpos = newpos[:3] + self.commanded_pos[3:]
         move = Move(self, self.commanded_pos, newpos, speed)
