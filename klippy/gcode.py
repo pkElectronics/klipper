@@ -247,7 +247,7 @@ class GCodeDispatch:
         if len(lines) > 1:
             self.respond_info("\n".join(lines), log=False)
         if not lines[0].startswith("Printer is not ready"): #I'll probably go to hell for this
-            self.respond_raw('!! Klipper-Error 0 %s' % (lines[0].strip(),))
+            self.respond_raw('!! klipper-error 0 %s' % (lines[0].strip(),))
         if self.is_fileinput:
             self.printer.request_exit('error_exit')
     def _respond_state(self, state):
