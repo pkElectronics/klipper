@@ -59,8 +59,8 @@ class IndirectHeater:
 
 
     def handle_connect(self):
-        self.heater_obj = self.printer.lookup_object(self.heater_name)
-        logging.info(self.heater_name)
+        pheaters = self.printer.lookup_object('heaters')
+        self.heater_obj = self.pheaters.lookup_heater(self.heater_name)
 
     def get_smooth_time(self):
         return self.smooth_time
