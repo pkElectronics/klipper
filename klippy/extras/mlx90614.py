@@ -31,14 +31,22 @@ class MLX90614:
         self.report_time = config.getint('mlx90614_report_time',30,minval=1)
         self.datasource = config.getchoice('mlx90614_datasource',["ambient","object1","object2","objectaverage"])
         self.temp = self.min_temp = self.max_temp = 0.
-        self.sample_timer = self.reactor.register_timer(self._sample_mlx)
+        self.sample_timer = None
         self.printer.add_object("mlx90614 " + self.name, self)
         self.printer.register_event_handler("klippy:connect",
                                             self.handle_connect)
 
+        self.printer.register_event_handler("klippy:shutdown",
+                                            self.handle_shutdown)
 
     def handle_connect(self):
-        self.reactor.update_timer(self.sample_timer, self.reactor.NOW)
+        self.sample_timer = self.reactor.register_timer(self._sample_mlx, self.reactor.NOW)
+
+    def handle_shutdown(self):
+        if self.sample_timer is not None:
+            self.reactor.unregister_timer(self.sample_timer)
+            self.sample_timer = None
+
 
     def setup_minmax(self, min_temp, max_temp):
         self.min_temp = min_temp

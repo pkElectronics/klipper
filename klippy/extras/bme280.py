@@ -189,8 +189,9 @@ class BME280:
         self.reactor.update_timer(self.sample_timer, self.reactor.NOW)
 
     def handle_shutdown(self):
-        if self.sample_timer:
+        if self.sample_timer is not None:
             self.reactor.unregister_timer(self.sample_timer)
+            self.sample_timer = None
 
     def setup_minmax(self, min_temp, max_temp):
         self.min_temp = min_temp
