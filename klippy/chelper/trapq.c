@@ -22,11 +22,18 @@ move_alloc(void)
 
 
 
-// Return the distance moved given a time in a move
+// Return the distance moved given a time in a move ####PASCAL
 inline double
 move_get_distance(struct move *m, double move_time)
 {
-    return (m->start_v + m->half_accel * move_time) * move_time;
+    //return (m->start_v + m->half_accel * move_time) * move_time;
+
+    double s = move_time / m->move_t;
+    s = (s < 0.f) ? 0.f : (s > 1.f ? 1.f : s);
+    double dv = 2.f * m->half_accel * m->move_t;
+
+    return m->start_v * move_time
+     + dv * m->move_t * (s*s*s - 0.5f*s*s*s*s);
 }
 
 // Return the XYZ coordinates given a time in a move
