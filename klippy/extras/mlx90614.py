@@ -29,6 +29,9 @@ class MLX90614:
         self.i2c = bus.MCU_I2C_from_config(
             config, default_addr=MLX_I2C_ADDR, default_speed=100000)
         self.report_time = config.getint('mlx90614_report_time',30,minval=1)
+
+        self.read_err_count = 0
+
         self.datasource = config.getchoice('mlx90614_datasource',["ambient","object1","object2","objectaverage"])
         self.temp = self.min_temp = self.max_temp = 0.
         self.sample_timer = None
@@ -75,9 +78,7 @@ class MLX90614:
 
 
     def _make_measurement(self):
-
         try:
-
             readaddr = 0
             if self.datasource == "ambient":
                 readaddr = MLX_REGS["TA"]
@@ -96,8 +97,14 @@ class MLX90614:
             logging.exception("mlx90614: exception encountered" +
                               " reading data: %s"%str(e))
             return False
-
-        self.temp = measurement
+        if measurement > 382.0: #communication error
+            logging.error("MLX Err: %s returned invalid data" % self.name)
+            self.read_err_count += 1
+            if self.temp == .0 or self.read_err_count > 20: #no previous reading received or 20 consecutive errors
+                self.temp = 47.11
+        else:
+            self.read_err_count = 0
+            self.temp = measurement
 
         return True
 

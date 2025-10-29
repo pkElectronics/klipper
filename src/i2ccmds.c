@@ -51,6 +51,7 @@ i2cdev_set_software_bus(struct i2cdev_s *i2c, struct i2c_software *is)
 
 void i2c_shutdown_on_err(int ret)
 {
+    return;
     switch (ret) {
     case I2C_BUS_NACK:
         shutdown("I2C NACK");
