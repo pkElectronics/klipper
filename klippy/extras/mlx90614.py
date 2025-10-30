@@ -97,7 +97,7 @@ class MLX90614:
             logging.exception("mlx90614: exception encountered" +
                               " reading data: %s"%str(e))
             return False
-        if measurement > 382.0: #communication error
+        if measurement > 382.0 or measurement < -20.0: #communication error
             logging.error("MLX Err: %s returned invalid data" % self.name)
             self.read_err_count += 1
             if self.temp == .0 or self.read_err_count > 20: #no previous reading received or 20 consecutive errors
