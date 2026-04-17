@@ -177,7 +177,11 @@ class ControlPID:
         #logging.debug("pid: %f@%.3f -> diff=%f deriv=%f err=%f integ=%f co=%d",
         #    temp, read_time, temp_diff, temp_deriv, temp_err, temp_integ, co)
         bounded_co = max(0., min(1.0, co))
-        self.heater.heater_obj.set_temp(setpoint_baseline_temp * bounded_co)
+        setpoint_temp = setpoint_baseline_temp * bounded_co
+
+        if setpoint_temp < 20.0: setpoint_temp = 0.
+
+        self.heater.heater_obj.set_temp(setpoint_temp)
         # Store state for next measurement
         self.prev_temp = temp
         self.prev_temp_time = read_time
