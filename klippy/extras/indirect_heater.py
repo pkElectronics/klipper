@@ -179,7 +179,7 @@ class ControlPID:
         bounded_co = max(0., min(1.0, co))
         setpoint_temp = setpoint_baseline_temp * bounded_co
 
-        if setpoint_temp < 20.0: setpoint_temp = 0.
+        if setpoint_temp < temp: setpoint_temp = 0.
 
         self.heater.heater_obj.set_temp(setpoint_temp)
         # Store state for next measurement
