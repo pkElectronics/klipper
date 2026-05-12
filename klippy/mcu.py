@@ -546,7 +546,7 @@ class MCU_adc:
 ######################################################################
 
 # Minimum time host needs to get scheduled events queued into mcu
-MIN_SCHEDULE_TIME = 0.100
+MIN_SCHEDULE_TIME = 0.300
 # Maximum time all MCUs can internally schedule into the future
 MAX_NOMINAL_DURATION = 3.0
 
