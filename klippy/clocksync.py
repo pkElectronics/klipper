@@ -61,7 +61,7 @@ class ClockSync:
         self.queries_pending += 1
         # Use an unusual time for the next event so clock messages
         # don't resonate with other periodic events.
-        return eventtime + .9839
+        return eventtime + .09839
     def _handle_clock(self, params):
         self.queries_pending = 0
         # Extend clock to 64bit
