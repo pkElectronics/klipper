@@ -92,10 +92,7 @@ sched_add_timer(struct timer *add)
         // This timer is before all other scheduled timers
         uint32_t trt = timer_read_time();
         if (timer_is_before(waketime, trt))
-            //try_shutdown("Timer too close");
             add->waketime = trt;
-            sendf("Timer rescheduled by %u ticks", trt-waketime);
-            //I'll go to hell for this
         if (tl == &deleted_timer)
             add->next = deleted_timer.next;
         else
